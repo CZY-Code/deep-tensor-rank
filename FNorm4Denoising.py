@@ -163,7 +163,6 @@ if __name__ == '__main__':
         ob_psnr = peak_signal_noise_ratio(MSI_gt, MSI_gt_noise, data_range=1.0)
         ob_ssim = structural_similarity(MSI_gt, MSI_gt_noise, data_range=1.0, channel_axis=2)
         ob_nrmse = normalized_root_mse(MSI_gt, MSI_gt_noise)
-        # print('ob_psnr:', ob_psnr, 'ob_ssim:', ob_ssim, 'ob_nrmse:', ob_nrmse)
         print(name, 'OB_PSNR: {:.3f}, OB_SSIM: {:.3f}, OB_NRMSE: {:.3f}'.format(ob_psnr, ob_ssim, ob_nrmse))
         OB_metrics = list(map(lambda x, y: x + y, OB_metrics, [ob_psnr, ob_ssim, ob_nrmse]))
 
@@ -209,7 +208,8 @@ if __name__ == '__main__':
                 
                 loss = 1.0*loss_rec + 0.01*loss_eps + 0.1*loss_rank #[1.0, 0.01 0.1]
                 optimizer.zero_grad()
-                loss.backward(retain_graph=True)
+                # loss.backward(retain_graph=True)
+                loss.backward()
                 optimizer.step()
                 scheduler.step()
                 pbar.set_postfix({'loss_rec': f"{loss_rec:.4f}", 
@@ -243,9 +243,9 @@ if __name__ == '__main__':
                     plt.show()
         average_metrics = list(map(lambda x, y: x + y, average_metrics, best_metric))
     
-    print('OB_PSNR: {}, OB_SSIM: {}, OB_NRMSE: {}'.format(*['{:.3f}'.format(metric / len(MSI_names)) 
+    print('Case:', args.case, 'OB_PSNR: {}, OB_SSIM: {}, OB_NRMSE: {}'.format(*['{:.3f}'.format(metric / len(MSI_names)) 
                                                    for metric in OB_metrics]))
-    print('PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(MSI_names)) 
+    print('Case:', args.case, 'PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(MSI_names)) 
                                                    for metric in average_metrics]))
 
 #增大W的正则有一定效果
