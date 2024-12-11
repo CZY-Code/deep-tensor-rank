@@ -1,5 +1,5 @@
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import torch
 from torch import nn, optim 
 import torch.nn.functional as F
@@ -9,7 +9,7 @@ import rff
 import random
 from tqdm import tqdm
 import argparse
-import tifffile
+import scipy
 from skimage.metrics import peak_signal_noise_ratio, normalized_root_mse, structural_similarity
 from utils.noiseFun import add_gaussian_noise, add_sparse_noise, add_deadline_noise, add_stripe_noise
 dtype = torch.cuda.FloatTensor
@@ -58,12 +58,12 @@ class MLPLayer(nn.Module):
         return output
 
 
-# mid_channel = 256
-# rank = 512
-# posdim = 64
-mid_channel = 1024
-rank = 2048
-posdim = 256
+mid_channel = 256
+rank = 512
+posdim = 64
+# mid_channel = 1024
+# rank = 2048
+# posdim = 256
 class Network(nn.Module):
     def __init__(self, rank, posdim, mid_channel):
         super(Network, self).__init__()
@@ -86,7 +86,7 @@ class Network(nn.Module):
         # self.centre = torch.Tensor(rank,rank,rank).type(dtype)
         # self.centre.data.uniform_(-1 / math.sqrt(rank), 1 / math.sqrt(rank))
         
-        self.encodingUV = rff.layers.GaussianEncoding(alpha=2.0, sigma=64.0, input_size=1, encoded_size=posdim//2)
+        self.encodingUV = rff.layers.GaussianEncoding(alpha=2.0, sigma=32.0, input_size=1, encoded_size=posdim//2)
         # self.encodingW = rff.layers.GaussianEncoding(alpha=1.0, sigma=32.0, input_size=1, encoded_size=posdim//4)
 
     def forward(self, U_input, V_input, W_input):
@@ -123,10 +123,10 @@ def truncated_linear_stretch(image, truncated_value=2, maxout=1, minout=0):
 if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
-    MSI_path = 'data/dc.tif'
-    MSI_DCmall = tifffile.imread(MSI_path).transpose(1,2,0).astype(np.float32)
-    Heigh, Wight, Band = MSI_DCmall.shape
-    MSI_DCmall = truncated_linear_stretch(MSI_DCmall)
+    MSI_path = 'data/PaviaU.mat'
+    MSI_PaviaU = scipy.io.loadmat(MSI_path)['paviaU']
+    Heigh, Wight, Band = MSI_PaviaU.shape
+    MSI_PaviaU = truncated_linear_stretch(MSI_PaviaU)
      
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument('--case', type=int, default=1)
@@ -140,9 +140,9 @@ if __name__ == '__main__':
 
     average_metrics = [0.0, 0.0, 0.0]
     OB_metrics = [0.0, 0.0, 0.0]
-    Ws = 256
+    Ws = 305
     for i in range(Heigh//Ws):
-        MSI_gt = MSI_DCmall[(Ws*i):(Ws*(i+1)), :, :] #[256, 307, 191]
+        MSI_gt = MSI_PaviaU[(Ws*i):(Ws*(i+1)), :, :] #[256, 307, 191]
 
         if args.case == 1:
             MSI_gt_noise = add_gaussian_noise(MSI_gt.copy(), std_dev=0.2)
@@ -175,14 +175,14 @@ if __name__ == '__main__':
         H, W, C = MSI_gt.shape
         X = torch.from_numpy(MSI_gt_noise).type(dtype).cuda()
         mask = torch.ones(X.shape).type(dtype)
-        mask[X == 0] = 0
+        # mask[X == 0] = 0
         
         U_input = torch.from_numpy(np.array(range(1, H+1))).reshape(H, 1).type(dtype)
         V_input = torch.from_numpy(np.array(range(1, W+1))).reshape(W, 1).type(dtype)
         W_input = torch.from_numpy(np.array(range(1, C+1))).reshape(C, 1).type(dtype)
 
         model = Network(rank, posdim, mid_channel).type(dtype)
-        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.01}], #[0.01]
+        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.001}], #[0.01]
                                 lr=0.001) #0.001
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
         
@@ -190,6 +190,7 @@ if __name__ == '__main__':
         with tqdm(total=max_iter) as pbar:
             for iter in range(max_iter):
                 X_Out, U, V, W = model(U_input, V_input, W_input)
+                
                 if iter == 0:
                     X_Out_exp = X_Out.detach()
                     D = torch.zeros([X.shape[0],X.shape[1],X.shape[2]]).type(dtype)
@@ -211,7 +212,7 @@ if __name__ == '__main__':
 
                 loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
                 
-                loss = 1.0*loss_rec + 0.1*loss_eps + 0.01*loss_rank #[1.0, 0.001 0.1]
+                loss = 1.0*loss_rec + 0.001*loss_eps + 0.01*loss_rank #[1.0, 0.001 0.1]
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()

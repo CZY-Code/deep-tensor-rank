@@ -32,7 +32,7 @@ def gaussian_encoding(
 
     See :class:`~rff.layers.GaussianEncoding` for more details.
     """
-    vp = 2 * np.pi * v @ b.T #调大前面的参数等于？？？能让效果变好？？？
+    vp = 2 * np.pi * v @ b.T
     scale = a.unsqueeze(1).repeat(1, 2).flatten()
     return torch.cat((torch.cos(vp), torch.sin(vp)), dim=-1) * scale
 

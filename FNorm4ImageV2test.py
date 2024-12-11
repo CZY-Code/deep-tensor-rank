@@ -102,14 +102,11 @@ def generate_random_mask(H, W, visible_ratio=0.1):
     mask = torch.from_numpy(mask).type(dtype).cuda()
     return mask
 
-# image_path = 'data/misc/4.2.05.tiff' # Plane
-# image_path = 'data/misc/4.2.07.tiff' # Peppers
-# image_path = 'data/misc/house.tiff' # House
-# image_path = 'data/misc/4.2.06.tiff' #Sailboat
+
 if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
-    image_names = ['4.2.05', '4.2.07', 'house', '4.2.06']
+    image_names = ['4.2.05', '4.2.07', 'house', '4.2.06'] #[Plane Peppers House Sailboat]
     average_metrics = [0.0, 0.0, 0.0]
     for name in image_names:
         image_path = 'data/misc/'+name+'.tiff'

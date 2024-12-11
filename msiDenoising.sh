@@ -1,8 +1,6 @@
 # 定义 cases 和 gpus 数组
-# CASES=(1 2 3 4)
-# GPUS=(0 1 2 3)
-CASES=(5)
-GPUS=(3)
+CASES=(4 5)
+GPUS=(2 3)
 
 # 创建一个数组来保存进程ID (PIDs)
 PIDS=()
@@ -23,7 +21,8 @@ for i in "${!CASES[@]}"; do
     # 设置 CUDA_VISIBLE_DEVICES 环境变量
     export CUDA_VISIBLE_DEVICES=${GPUS[$i]}
     # 启动 Python 脚本并将它放到后台运行
-    python FNorm4Denoising.py --case="${CASES[$i]}" &
+    # python FNorm4Denoising.py --case="${CASES[$i]}" &
+    python FNorm4DCmallDenoising.py --case="${CASES[$i]}" &
     # 保存进程ID
     PIDS+=($!)
 done
