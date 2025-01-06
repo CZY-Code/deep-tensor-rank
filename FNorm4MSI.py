@@ -135,6 +135,7 @@ if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
     MSI_names = ['toys', 'flowers']
+    Schatten_q = 0.3
     # MSI_names = ['toys']
     
     parser = argparse.ArgumentParser(description="Process some integers.")
@@ -165,18 +166,18 @@ if __name__ == '__main__':
                 X_Out, U, V, W = model(U_input, V_input, W_input)
                 loss_rec = torch.norm(X_Out*mask - X*mask, p='fro')
                 
-                U_input_eps = torch.normal(mean=U_input, std=1.0*torch.ones_like(U_input)) #std=1.0
-                V_input_eps = torch.normal(mean=V_input, std=1.0*torch.ones_like(V_input))
+                U_input_eps = torch.normal(mean=U_input, std=0.5*torch.ones_like(U_input)) #std=1.0
+                V_input_eps = torch.normal(mean=V_input, std=0.5*torch.ones_like(V_input))
                 W_input_eps = torch.normal(mean=W_input, std=0.1*torch.ones_like(W_input))
                 X_Out_eps, *_ = model(U_input_eps, V_input_eps, W_input_eps)
                 loss_eps = torch.norm(X_Out.detach()-X_Out_eps, p='fro')
 
-                loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
-                # loss_rank = torch.norm(U, p=2, dim=0).pow(0.1).sum() +\
-                #             torch.norm(V, p=2, dim=0).pow(0.1).sum() +\
-                #             torch.norm(W, p=2, dim=0).pow(0.1).sum()
+                # loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
+                loss_rank = torch.norm(U, p=2, dim=0).pow(Schatten_q).sum() +\
+                            torch.norm(V, p=2, dim=0).pow(Schatten_q).sum() +\
+                            torch.norm(W, p=2, dim=0).pow(Schatten_q).sum()
                 
-                loss = 1.0*loss_rec + 0.01*loss_eps + 0.1*loss_rank #[1.0, 0.01 0.1]
+                loss = 1.0*loss_rec + 0.01*loss_eps + 0.001*loss_rank #[1.0, 0.01 0.1]
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()

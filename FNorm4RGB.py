@@ -1,9 +1,8 @@
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+# import os
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import torch
 from torch import nn, optim 
 import torch.nn.functional as F
-dtype = torch.cuda.FloatTensor
 import numpy as np 
 import matplotlib.pyplot as plt 
 from skimage.metrics import peak_signal_noise_ratio, normalized_root_mse, structural_similarity
@@ -12,6 +11,8 @@ import random
 import copy
 from tqdm import tqdm
 from PIL import Image
+import argparse
+dtype = torch.cuda.FloatTensor
 
 def set_random_seed(seed):
     torch.manual_seed(seed)
@@ -44,12 +45,14 @@ class MLPLayer(nn.Module):
 
     def forward(self, input):
         output = self.linear(input)
-        # output = torch.sin(self.omega_0 * output) 
         output = F.relu(output) #tanh、hardtanh、softplus、relu、sin
         return output
 
+mid_channel = 512
+rank = 256
+posdim = 128
 class Network(nn.Module):
-    def __init__(self, rank, posdim):
+    def __init__(self, rank, posdim, mid_channel):
         super(Network, self).__init__()
 
         U_net = nn.Sequential(MLPLayer(posdim, mid_channel, is_first=True),
@@ -106,23 +109,26 @@ def generate_random_mask(H, W, visible_ratio=0.1):
 if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
+    Schatten_q = 0.5
     image_names = ['4.2.05', '4.2.07', 'house', '4.2.06'] #[Plane Peppers House Sailboat]
     average_metrics = [0.0, 0.0, 0.0]
+    
+    parser = argparse.ArgumentParser(description="Process some integers.")
+    parser.add_argument('--visible_ratio', type=float, required=True, help='The visible ratio parameter.')
+    args = parser.parse_args()
+
     for name in image_names:
         image_path = 'data/misc/'+name+'.tiff'
         image_gt = np.array(Image.open(image_path)).astype(np.float32) / 255.0
         H, W, C = image_gt.shape
         
-        mask = generate_random_mask(H, W, visible_ratio=0.3) #[H,W,3]
+        mask = generate_random_mask(H, W, visible_ratio=args.visible_ratio) #[H,W,3]
         X = torch.from_numpy(image_gt).type(dtype).cuda()
-
-        mid_channel = int(min(H, W)) #512
-        rank = mid_channel//2 #256
         
         U_input = torch.from_numpy(np.array(range(1,H+1))).reshape(H,1).type(dtype) #[512,1] 1-512间的整数
         V_input = torch.from_numpy(np.array(range(1,W+1))).reshape(W,1).type(dtype)
 
-        model = Network(rank, posdim=128).type(dtype)
+        model = Network(rank, posdim, mid_channel).type(dtype)
         optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.002}], #[0.002]
                                 lr=0.001)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
@@ -140,18 +146,19 @@ if __name__ == '__main__':
                 # loss_eps = torch.norm(X_Out-X_Out_eps, 2)
                 loss_eps = torch.norm(X_Out - X, p='fro', dim=(0, 1)).mean()
 
-                # loss_rank = torch.norm(Us, 2) + torch.norm(Vs, 2)
-                loss_rank = torch.norm(Us, p='fro', dim=(0, 1)).mean() + \
-                            torch.norm(Vs, p='fro', dim=(0, 1)).mean()
+                # loss_rank = torch.norm(Us, p='fro', dim=(0, 1)).mean() + \
+                #             torch.norm(Vs, p='fro', dim=(0, 1)).mean()
+                loss_rank = torch.norm(Us, p=2, dim=0).pow(Schatten_q).sum() +\
+                            torch.norm(Vs, p=2, dim=0).pow(Schatten_q).sum()
                 
-                loss = 1.0*loss_rec + 0.05*loss_eps + 0.1*loss_rank #[1.0, 0.05 0.1]
+                loss = 1.0*loss_rec + 0.05*loss_eps + 0.001*loss_rank #[1.0, 0.05 0.1]
                 optimizer.zero_grad()
-                loss.backward(retain_graph=True)
+                loss.backward()
                 optimizer.step()
                 scheduler.step()
-                pbar.set_postfix({'loss_rec': f"{loss_rec:.4f}", 
-                                'loss_eps': f"{loss_eps:.4f}", 
-                                'loss_rank': f"{loss_rank:.4f}"})
+                pbar.set_postfix({'loss_rec': f"{loss_rec.item():.4f}", 
+                                'loss_eps': f"{loss_eps.item():.4f}", 
+                                'loss_rank': f"{loss_rank.item():.4f}"})
                 pbar.update()
                 
                 if iter % 500 == 0 and iter != 0:
@@ -161,7 +168,8 @@ if __name__ == '__main__':
                                                 win_size=15, data_range=1.0)
                     nrmse = normalized_root_mse(image_gt, X_Out.cpu().detach().numpy())
                     if psnr >= best_metric[0]:
-                        print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
+                        print('SR:',args.visible_ratio, 'name:',name, 'iteration:', iter, 'PSNR', 
+                              psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
                     continue
 
@@ -180,5 +188,6 @@ if __name__ == '__main__':
                     plt.show()
         average_metrics = list(map(lambda x, y: x + y, average_metrics, best_metric))
     
-    print('PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(image_names)) 
+    print('SR:',args.visible_ratio, 
+          'PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(image_names)) 
                                                    for metric in average_metrics]))

@@ -18,7 +18,8 @@ handle_interrupt() {
 # 循环遍历 cases 和 gpus 数组
 for i in "${!PARAMETERS[@]}"; do
     export CUDA_VISIBLE_DEVICES=${GPUS[$i]}
-    python FNorm4MSI.py --visible_ratio="${PARAMETERS[$i]}" &
+    # python FNorm4MSI.py --visible_ratio="${PARAMETERS[$i]}" &
+    python FNorm4RGB.py --visible_ratio="${PARAMETERS[$i]}" &
     # 保存进程ID
     PIDS+=($!)
 done
