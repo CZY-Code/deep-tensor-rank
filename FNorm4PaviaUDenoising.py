@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import torch
 from torch import nn, optim 
 import torch.nn.functional as F
@@ -58,12 +58,12 @@ class MLPLayer(nn.Module):
         return output
 
 
-mid_channel = 256
-rank = 512
-posdim = 64
-# mid_channel = 1024
-# rank = 2048
-# posdim = 256
+# mid_channel = 256
+# rank = 512
+# posdim = 64
+mid_channel = 512
+rank = 1024
+posdim = 256
 class Network(nn.Module):
     def __init__(self, rank, posdim, mid_channel):
         super(Network, self).__init__()
@@ -86,7 +86,7 @@ class Network(nn.Module):
         # self.centre = torch.Tensor(rank,rank,rank).type(dtype)
         # self.centre.data.uniform_(-1 / math.sqrt(rank), 1 / math.sqrt(rank))
         
-        self.encodingUV = rff.layers.GaussianEncoding(alpha=2.0, sigma=32.0, input_size=1, encoded_size=posdim//2)
+        self.encodingUV = rff.layers.GaussianEncoding(alpha=2.0, sigma=64.0, input_size=1, encoded_size=posdim//2)
         # self.encodingW = rff.layers.GaussianEncoding(alpha=1.0, sigma=32.0, input_size=1, encoded_size=posdim//4)
 
     def forward(self, U_input, V_input, W_input):
@@ -104,7 +104,7 @@ class Network(nn.Module):
         normalized_tensor = (tensor - min_val) / (max_val - min_val)
         return normalized_tensor
 
-def truncated_linear_stretch(image, truncated_value=2, maxout=1, minout=0):
+def truncated_linear_stretch(image, truncated_value=0, maxout=1, minout=0): #2
     def gray_process(gray, maxout, minout):
         truncated_down = np.percentile(gray, truncated_value)
         truncated_up = np.percentile(gray, 100 - truncated_value)
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     phi = 0 #1*10e-6
-    mu = 2.0 #1.0
+    mu = 0.1 #1.0
     gamma = 0.02 #0.02
     soft_thres = soft()
 
@@ -175,14 +175,15 @@ if __name__ == '__main__':
         H, W, C = MSI_gt.shape
         X = torch.from_numpy(MSI_gt_noise).type(dtype).cuda()
         mask = torch.ones(X.shape).type(dtype)
-        # mask[X == 0] = 0
+        if args.case in [4, 5]:
+            mask[X == 0] = 0
         
         U_input = torch.from_numpy(np.array(range(1, H+1))).reshape(H, 1).type(dtype)
         V_input = torch.from_numpy(np.array(range(1, W+1))).reshape(W, 1).type(dtype)
         W_input = torch.from_numpy(np.array(range(1, C+1))).reshape(C, 1).type(dtype)
 
         model = Network(rank, posdim, mid_channel).type(dtype)
-        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.001}], #[0.01]
+        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.01}], #[0.01]
                                 lr=0.001) #0.001
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
         
@@ -204,15 +205,19 @@ if __name__ == '__main__':
                 loss_rec = loss_rec + phi * torch.norm(X_Out[1:,:,:] - X_Out[:-1,:,:], 1)
                 loss_rec = loss_rec + phi * torch.norm(X_Out[:,1:,:] - X_Out[:,:-1,:], 1)
                 
-                U_input_eps = torch.normal(mean=U_input, std=1.0*torch.ones_like(U_input))
-                V_input_eps = torch.normal(mean=V_input, std=1.0*torch.ones_like(V_input))
-                W_input_eps = torch.normal(mean=W_input, std=1.0*torch.ones_like(W_input))
+                U_input_eps = torch.normal(mean=U_input, std=0.5*torch.ones_like(U_input))
+                V_input_eps = torch.normal(mean=V_input, std=0.5*torch.ones_like(V_input))
+                W_input_eps = torch.normal(mean=W_input, std=0.0*torch.ones_like(W_input))
                 X_Out_eps, *_ = model(U_input_eps, V_input_eps, W_input_eps)
                 loss_eps = torch.norm(X_Out.detach()-X_Out_eps, p='fro')
 
-                loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
+                # loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
+                loss_rank = torch.norm(U, p=2, dim=0).pow(0.1).sum() +\
+                            torch.norm(V, p=2, dim=0).pow(0.1).sum() +\
+                            torch.norm(W, p=2, dim=0).pow(0.1).sum()
                 
-                loss = 1.0*loss_rec + 0.001*loss_eps + 0.01*loss_rank #[1.0, 0.001 0.1]
+                
+                loss = 1.0*loss_rec + 0.01*loss_eps + 0.01*loss_rank #[1.0, 0.001 0.1]
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -248,7 +253,6 @@ if __name__ == '__main__':
                         plt.title('out')
                         plt.show()
         average_metrics = list(map(lambda x, y: x + y, average_metrics, best_metric))
-        # torch.cuda.empty_cache()
     
     print('Case:', args.case, 'OB_PSNR: {}, OB_SSIM: {}, OB_NRMSE: {}'.format(*['{:.3f}'.format(metric / (Heigh//Ws)) 
                                                    for metric in OB_metrics]))

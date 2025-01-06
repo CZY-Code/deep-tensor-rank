@@ -169,18 +169,21 @@ if __name__ == '__main__':
                 V_input_eps = torch.normal(mean=V_input, std=1.0*torch.ones_like(V_input))
                 W_input_eps = torch.normal(mean=W_input, std=0.1*torch.ones_like(W_input))
                 X_Out_eps, *_ = model(U_input_eps, V_input_eps, W_input_eps)
-                loss_eps = torch.norm(X_Out-X_Out_eps, p='fro')
+                loss_eps = torch.norm(X_Out.detach()-X_Out_eps, p='fro')
 
                 loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
+                # loss_rank = torch.norm(U, p=2, dim=0).pow(0.1).sum() +\
+                #             torch.norm(V, p=2, dim=0).pow(0.1).sum() +\
+                #             torch.norm(W, p=2, dim=0).pow(0.1).sum()
                 
                 loss = 1.0*loss_rec + 0.01*loss_eps + 0.1*loss_rank #[1.0, 0.01 0.1]
                 optimizer.zero_grad()
-                loss.backward(retain_graph=True)
+                loss.backward()
                 optimizer.step()
                 scheduler.step()
-                pbar.set_postfix({'loss_rec': f"{loss_rec:.4f}", 
-                                  'loss_eps': f"{loss_eps:.4f}", 
-                                  'loss_rank': f"{loss_rank:.4f}"})
+                pbar.set_postfix({'loss_rec': f"{loss_rec.item():.4f}", 
+                                  'loss_eps': f"{loss_eps.item():.4f}", 
+                                  'loss_rank': f"{loss_rank.item():.4f}"})
                 pbar.update()
                 
                 if iter % 500 == 0 and iter != 0:
@@ -191,9 +194,10 @@ if __name__ == '__main__':
                     # print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                     
                     if ssim >= best_metric[1]:
-                        print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
+                        print('SR:',args.visible_ratio, 'name:',name, 'iteration:', iter, 
+                              'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
-                    # continue
+                    continue
                     show = [15,25,30]
                     plt.figure(figsize=(15,45))
                     plt.subplot(131)
