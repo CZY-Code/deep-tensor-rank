@@ -10,6 +10,7 @@ import random
 from tqdm import tqdm
 import argparse
 import scipy
+from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio, normalized_root_mse, structural_similarity
 from utils.noiseFun import add_gaussian_noise, add_sparse_noise, add_deadline_noise, add_stripe_noise
 dtype = torch.cuda.FloatTensor
@@ -60,7 +61,7 @@ class MLPLayer(nn.Module):
 
 # mid_channel = 256
 # rank = 512
-# posdim = 64
+# posdim = 128
 mid_channel = 512
 rank = 1024
 posdim = 256
@@ -83,16 +84,12 @@ class Network(nn.Module):
                                    MLPLayer(mid_channel, mid_channel, is_first=False),
                                    nn.Linear(mid_channel, rank))
         
-        # self.centre = torch.Tensor(rank,rank,rank).type(dtype)
-        # self.centre.data.uniform_(-1 / math.sqrt(rank), 1 / math.sqrt(rank))
-        
-        self.encodingUV = rff.layers.GaussianEncoding(alpha=2.0, sigma=64.0, input_size=1, encoded_size=posdim//2)
-        # self.encodingW = rff.layers.GaussianEncoding(alpha=1.0, sigma=32.0, input_size=1, encoded_size=posdim//4)
+        self.encoding = rff.layers.GaussianEncoding(alpha=1.0, sigma=16.0, input_size=1, encoded_size=posdim//2) #1 16
 
     def forward(self, U_input, V_input, W_input):
-        U = self.U_Net(self.encodingUV(self.normalize_to_01(U_input)))
-        V = self.V_Net(self.encodingUV(self.normalize_to_01(V_input)))
-        W = self.W_Net(self.encodingUV(self.normalize_to_01(W_input)))
+        U = self.U_Net(self.encoding(self.normalize_to_01(U_input)))
+        V = self.V_Net(self.encoding(self.normalize_to_01(V_input)))
+        W = self.W_Net(self.encoding(self.normalize_to_01(W_input)))
         output = torch.einsum('ir,jr,kr -> ijk', U, V, W)
         return output, U, V, W
     
@@ -104,7 +101,7 @@ class Network(nn.Module):
         normalized_tensor = (tensor - min_val) / (max_val - min_val)
         return normalized_tensor
 
-def truncated_linear_stretch(image, truncated_value=0, maxout=1, minout=0): #2
+def truncated_linear_stretch(image, truncated_value=0, maxout=1, minout=0):
     def gray_process(gray, maxout, minout):
         truncated_down = np.percentile(gray, truncated_value)
         truncated_up = np.percentile(gray, 100 - truncated_value)
@@ -131,11 +128,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument('--case', type=int, default=1)
     parser.add_argument('--show', action='store_true')
+    parser.add_argument('--save', action='store_true')
     args = parser.parse_args()
 
-    phi = 0 #1*10e-6
-    mu = 0.1 #1.0
+    mu = 0.1 #0.1
     gamma = 0.02 #0.02
+    phi = 5*10e-6
     soft_thres = soft()
 
     average_metrics = [0.0, 0.0, 0.0]
@@ -173,7 +171,7 @@ if __name__ == '__main__':
         OB_metrics = list(map(lambda x, y: x + y, OB_metrics, [ob_psnr, ob_ssim, ob_nrmse]))
 
         H, W, C = MSI_gt.shape
-        X = torch.from_numpy(MSI_gt_noise).type(dtype).cuda()
+        X = torch.from_numpy(MSI_gt_noise).type(dtype)
         mask = torch.ones(X.shape).type(dtype)
         if args.case in [4, 5]:
             mask[X == 0] = 0
@@ -183,8 +181,7 @@ if __name__ == '__main__':
         W_input = torch.from_numpy(np.array(range(1, C+1))).reshape(C, 1).type(dtype)
 
         model = Network(rank, posdim, mid_channel).type(dtype)
-        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.01}], #[0.01]
-                                lr=0.001) #0.001
+        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.01}], lr=0.001) #[0.01, 0.001]
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
         
         best_metric = [0.0, 0.0, 0.0]
@@ -202,22 +199,19 @@ if __name__ == '__main__':
                 D = (D + mu * (S  - Vs)).clone().detach()
                 
                 loss_rec = torch.norm(X*mask-X_Out*mask-S*mask, 2)
-                loss_rec = loss_rec + phi * torch.norm(X_Out[1:,:,:] - X_Out[:-1,:,:], 1)
-                loss_rec = loss_rec + phi * torch.norm(X_Out[:,1:,:] - X_Out[:,:-1,:], 1)
                 
                 U_input_eps = torch.normal(mean=U_input, std=0.5*torch.ones_like(U_input))
                 V_input_eps = torch.normal(mean=V_input, std=0.5*torch.ones_like(V_input))
                 W_input_eps = torch.normal(mean=W_input, std=0.0*torch.ones_like(W_input))
                 X_Out_eps, *_ = model(U_input_eps, V_input_eps, W_input_eps)
                 loss_eps = torch.norm(X_Out.detach()-X_Out_eps, p='fro')
+                # loss_eps = phi* (torch.norm(X_Out[1:,:,:]-X_Out[:-1,:,:],1) + torch.norm(X_Out[:,1:,:]-X_Out[:,:-1,:],1))
 
-                # loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
                 loss_rank = torch.norm(U, p=2, dim=0).pow(0.1).sum() +\
                             torch.norm(V, p=2, dim=0).pow(0.1).sum() +\
                             torch.norm(W, p=2, dim=0).pow(0.1).sum()
                 
-                
-                loss = 1.0*loss_rec + 0.01*loss_eps + 0.01*loss_rank #[1.0, 0.001 0.1]
+                loss = 1.0*loss_rec + 0.01*loss_eps + 0.01*loss_rank #[1.0, 0.01, 0.01]
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -231,14 +225,21 @@ if __name__ == '__main__':
                     psnr = peak_signal_noise_ratio(MSI_gt, X_Out.cpu().detach().numpy(), data_range=1.0)
                     ssim = structural_similarity(MSI_gt, X_Out.cpu().detach().numpy(), data_range=1.0, channel_axis=2)
                     nrmse = normalized_root_mse(MSI_gt, X_Out.cpu().detach().numpy())
-                    # print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                     
+                    show = [50, 30, 10]
                     if ssim >= best_metric[1]:
                         print('case:', args.case, 'slice:', i, 'iteration:', iter, 
                               'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
+                        if args.save:
+                            output_folder = os.path.join('output/Ours/denoising/PaviaU')
+                            if not os.path.exists(output_folder):
+                                os.makedirs(output_folder)
+                            output_path = os.path.join(output_folder, str(i) + f'_case{args.case:d}_psnr{psnr:.3f}_denoising.png')
+                            img = Image.fromarray((np.clip(X_Out.cpu().detach().numpy(),0,1) * 255).astype(np.uint8)[...,show])
+                            img.save(output_path)
+
                     if args.show:
-                        show = [15, 25, 30]
                         plt.figure(figsize=(15, 45))
                         plt.subplot(131)
                         plt.imshow(np.clip(X.cpu().detach().numpy(), 0, 1)[...,show])

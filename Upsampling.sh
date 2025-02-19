@@ -1,8 +1,3 @@
-#!/bin/bash
-PARAMETERS=(0.10 0.15 0.20 0.25 0.30)
-GPUS=(0 1 2 3 0)
-# PARAMETERS=(0.30)
-# GPUS=(0)
 # 创建一个数组来保存进程ID (PIDs)
 PIDS=()
 
@@ -17,16 +12,15 @@ handle_interrupt() {
     exit 1
 }
 
+NAMES=('Table' 'Airplane' 'Chair' 'Lamp')
+GPUS=(0 1 2 3)
 # 循环遍历 cases 和 gpus 数组
-for i in "${!PARAMETERS[@]}"; do
+for i in "${!NAMES[@]}"; do
     export CUDA_VISIBLE_DEVICES=${GPUS[$i]}
-    # python FNorm4RGB.py --save --visible_ratio="${PARAMETERS[$i]}" &
-    # python FNorm4MSI.py --save --visible_ratio="${PARAMETERS[$i]}" &
-    # python FNorm4Video.py --save --visible_ratio="${PARAMETERS[$i]}" &
-    # Reproduct SOTA method
-    # python Demos/LRTFR/LRTFR_Inpainting.py --save --visible_ratio="${PARAMETERS[$i]}" &
+    # 启动 Python 脚本并将它放到后台运行
+    # python FNorm4Bunny --name="${NAMES[$i]}" &
     # ablation
-    python ablation/Inpainting.py --visible_ratio="${PARAMETERS[$i]}" &
+    python ablation/Upsampling.py --name="${NAMES[$i]}" &
     # 保存进程ID
     PIDS+=($!)
 done

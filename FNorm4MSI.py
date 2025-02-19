@@ -3,7 +3,6 @@ import os
 import torch
 from torch import nn, optim 
 import torch.nn.functional as F
-dtype = torch.cuda.FloatTensor
 import numpy as np 
 import matplotlib.pyplot as plt 
 from skimage.metrics import peak_signal_noise_ratio, normalized_root_mse, structural_similarity
@@ -11,8 +10,8 @@ import rff
 import random
 from tqdm import tqdm
 from PIL import Image
-import math
 import argparse
+dtype = torch.cuda.FloatTensor
 
 def set_random_seed(seed):
     torch.manual_seed(seed)
@@ -23,7 +22,6 @@ def set_random_seed(seed):
         torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
     random.seed(seed)
-
 
 class MLPLayer(nn.Module):
     def __init__(self, in_features, out_features, bias=True, is_first=False, omega_0=1.0*np.pi): #np.pi
@@ -45,7 +43,6 @@ class MLPLayer(nn.Module):
 
     def forward(self, input):
         output = self.linear(input)
-        # output = torch.sin(self.omega_0 * output) 
         output = F.relu(output) #tanh、hardtanh、softplus、relu、sin
         return output
 
@@ -72,9 +69,6 @@ class Network(nn.Module):
                                    MLPLayer(mid_channel, mid_channel, is_first=False),
                                    nn.Linear(mid_channel, rank))
         
-        self.centre = torch.Tensor(rank,rank,rank).type(dtype)
-        self.centre.data.uniform_(-1 / math.sqrt(rank), 1 / math.sqrt(rank))
-        
         self.encodingUV = rff.layers.GaussianEncoding(alpha=1.0, sigma=16.0, input_size=1, encoded_size=posdim//2)
         # self.encodingW = rff.layers.GaussianEncoding(alpha=1.0, sigma=32.0, input_size=1, encoded_size=posdim//4)
 
@@ -92,7 +86,6 @@ class Network(nn.Module):
             return torch.zeros_like(tensor)
         normalized_tensor = (tensor - min_val) / (max_val - min_val)
         return normalized_tensor
-
 
 def generate_random_mask_3d(H, W, C, visible_ratio=0.1):
     num_visible = int(H * W * C * visible_ratio)
@@ -130,28 +123,36 @@ def load_grayscale_images_from_directory(directory):
     else:
         return None
 
-#  python FNorm4MSI.py --visible_ratio 0.1
+
 if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
     MSI_names = ['toys', 'flowers']
-    Schatten_q = 0.3
-    # MSI_names = ['toys']
+    Schatten_q = 1.0
+    average_metrics = [0.0, 0.0, 0.0]
+    OB_metrics = [0.0, 0.0, 0.0]
     
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument('--visible_ratio', type=float, required=True, help='The visible ratio parameter.')
+    parser.add_argument('--save', action='store_true')
     args = parser.parse_args()
 
-    average_metrics = [0.0, 0.0, 0.0]
     for name in MSI_names:
         MSI_path = 'data/MSIs/'+name
-        
         MSI_gt = load_grayscale_images_from_directory(MSI_path)
         H, W, C = MSI_gt.shape
         mask = generate_random_mask_3d(H, W, C, visible_ratio=args.visible_ratio) #[H,W,3]
         X = torch.from_numpy(MSI_gt).type(dtype).cuda()
-        
-        U_input = torch.from_numpy(np.array(range(1,H+1))).reshape(H,1).type(dtype) #[512,1] 1-512间的整数
+
+        MSI_incomplete = (X*mask).cpu().detach().numpy()
+        ob_psnr = peak_signal_noise_ratio(MSI_gt, MSI_incomplete, data_range=1.0)
+        ob_ssim = structural_similarity(MSI_gt, MSI_incomplete, data_range=1.0, channel_axis=2)
+        ob_nrmse = normalized_root_mse(MSI_gt, MSI_incomplete)
+        print('SR:',args.visible_ratio, 'name:',name,
+              'OB_PSNR: {:.3f}, OB_SSIM: {:.3f}, OB_NRMSE: {:.3f}'.format(ob_psnr, ob_ssim, ob_nrmse))
+        OB_metrics = list(map(lambda x, y: x + y, OB_metrics, [ob_psnr, ob_ssim, ob_nrmse]))
+
+        U_input = torch.from_numpy(np.array(range(1,H+1))).reshape(H,1).type(dtype)
         V_input = torch.from_numpy(np.array(range(1,W+1))).reshape(W,1).type(dtype)
         W_input = torch.from_numpy(np.array(range(1,C+1))).reshape(C,1).type(dtype)
 
@@ -177,7 +178,7 @@ if __name__ == '__main__':
                             torch.norm(V, p=2, dim=0).pow(Schatten_q).sum() +\
                             torch.norm(W, p=2, dim=0).pow(Schatten_q).sum()
                 
-                loss = 1.0*loss_rec + 0.01*loss_eps + 0.001*loss_rank #[1.0, 0.01 0.1]
+                loss = 1.0*loss_rec + 0.01*loss_eps + 0.001*loss_rank #[1.0, 0.01 0.001]
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -189,17 +190,22 @@ if __name__ == '__main__':
                 
                 if iter % 500 == 0 and iter != 0:
                     psnr = peak_signal_noise_ratio(MSI_gt, X_Out.cpu().detach().numpy(), data_range=1.0)
-                    ssim = structural_similarity(MSI_gt, X_Out.cpu().detach().numpy(), 
-                                                win_size=15, data_range=1.0, channel_axis=2)
+                    ssim = structural_similarity(MSI_gt, X_Out.cpu().detach().numpy(), data_range=1.0, channel_axis=2)
                     nrmse = normalized_root_mse(MSI_gt, X_Out.cpu().detach().numpy())
-                    # print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                     
+                    show = [15,25,30]
                     if ssim >= best_metric[1]:
                         print('SR:',args.visible_ratio, 'name:',name, 'iteration:', iter, 
                               'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
+                        if args.save:
+                            output_folder = os.path.join('output/Ours/inpainting/MSI')
+                            if not os.path.exists(output_folder):
+                                os.makedirs(output_folder)
+                            output_path = os.path.join(output_folder, name + f'_SR{args.visible_ratio:.2f}_psnr{psnr:.3f}_inpainting.png')
+                            img = Image.fromarray((np.clip(X_Out.cpu().detach().numpy(),0,1) * 255).astype(np.uint8)[...,show])
+                            img.save(output_path)
                     continue
-                    show = [15,25,30]
                     plt.figure(figsize=(15,45))
                     plt.subplot(131)
                     plt.imshow(np.clip((X*mask).cpu().detach().numpy(),0,1)[...,show])
@@ -214,21 +220,10 @@ if __name__ == '__main__':
                     plt.title('out')
                     plt.show()
         average_metrics = list(map(lambda x, y: x + y, average_metrics, best_metric))
-    
-    print('SR:', args.visible_ratio, 
+
+    print(f'SR :{args.visible_ratio:.2f}', 
+          'OB_PSNR: {}, OB_SSIM: {}, OB_NRMSE: {}'.format(*['{:.3f}'.format(metric / len(MSI_names)) 
+                                                   for metric in OB_metrics]))
+    print(f'SR :{args.visible_ratio:.2f}',
           'PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(MSI_names)) 
                                                    for metric in average_metrics]))
-
-#toys
-# SR: 0.10 PSNR: 41.074, SSIM: 0.987, NRMSE: 0.031
-# SR: 0.15 PSNR: 43.448, SSIM: 0.992, NRMSE: 0.024
-# SR: 0.20 PSNR: 44.772, SSIM: 0.993, NRMSE: 0.021
-# SR: 0.25 PSNR: 45.444, SSIM: 0.994, NRMSE: 0.019
-# SR: 0.30 PSNR: 45.969, SSIM: 0.995, NRMSE: 0.018
-
-# flowers
-# SR: 0.10 PSNR: 44.582, SSIM: 0.990, NRMSE: 0.037
-# SR: 0.15 PSNR: 46.753, SSIM: 0.993, NRMSE: 0.029
-# SR: 0.20 PSNR: 47.817, SSIM: 0.995, NRMSE: 0.026
-# SR: 0.25 PSNR: 48.762, SSIM: 0.996, NRMSE: 0.023
-# SR: 0.30 PSNR: 49.607, SSIM: 0.996, NRMSE: 0.021

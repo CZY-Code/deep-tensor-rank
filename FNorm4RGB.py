@@ -1,4 +1,4 @@
-# import os
+import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import torch
 from torch import nn, optim 
@@ -26,7 +26,7 @@ def set_random_seed(seed):
 
 
 class MLPLayer(nn.Module):
-    def __init__(self, in_features, out_features, bias=True, is_first=False, omega_0=1.0*np.pi): #np.pi
+    def __init__(self, in_features, out_features, bias=True, is_first=False, omega_0=1.0*np.pi):
         super().__init__()
         self.omega_0 = omega_0
         self.is_first = is_first
@@ -40,12 +40,14 @@ class MLPLayer(nn.Module):
                 nn.init.uniform_(self.linear.weight, -1 / self.in_features, 1 / self.in_features)
             else:
                 # self.linear.weight.uniform_(-np.sqrt(6 / self.in_features) / self.omega_0, 
-                                            #  np.sqrt(6 / self.in_features) / self.omega_0)
+                #                              np.sqrt(6 / self.in_features) / self.omega_0)
                 nn.init.xavier_uniform_(self.linear.weight, gain=nn.init.calculate_gain('relu'))
+                # nn.init.xavier_uniform_(self.linear.weight, gain=nn.init.calculate_gain('leaky_relu', param=0.1))
 
     def forward(self, input):
         output = self.linear(input)
         output = F.relu(output) #tanh、hardtanh、softplus、relu、sin
+        # output = F.leaky_relu(output, negative_slope=0.1)
         return output
 
 mid_channel = 512
@@ -76,7 +78,6 @@ class Network(nn.Module):
         for i in range(3):
             U = self.U_Nets[i](self.encoding(self.normalize_to_01(U_input)))
             V = self.V_Nets[i](self.encoding(self.normalize_to_01(V_input)))
-            # channelImg = torch.einsum('ab,ia,jb -> ij', centre[...,i], U, V)
             channelImg = U @ V.t()
             outputs.append(channelImg)
             outputs_U.append(U)
@@ -109,27 +110,36 @@ def generate_random_mask(H, W, visible_ratio=0.1):
 if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
-    Schatten_q = 0.5
+    Schatten_q = 1.0
     image_names = ['4.2.05', '4.2.07', 'house', '4.2.06'] #[Plane Peppers House Sailboat]
     average_metrics = [0.0, 0.0, 0.0]
+    OB_metrics = [0.0, 0.0, 0.0]
     
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument('--visible_ratio', type=float, required=True, help='The visible ratio parameter.')
+    parser.add_argument('--save', action='store_true')
     args = parser.parse_args()
 
     for name in image_names:
         image_path = 'data/misc/'+name+'.tiff'
-        image_gt = np.array(Image.open(image_path)).astype(np.float32) / 255.0
+        image_gt = np.array(Image.open(image_path)).astype(np.float32) / 255.0        
         H, W, C = image_gt.shape
-        
-        mask = generate_random_mask(H, W, visible_ratio=args.visible_ratio) #[H,W,3]
+        mask = generate_random_mask(H, W, visible_ratio=args.visible_ratio)
         X = torch.from_numpy(image_gt).type(dtype).cuda()
         
-        U_input = torch.from_numpy(np.array(range(1,H+1))).reshape(H,1).type(dtype) #[512,1] 1-512间的整数
+        RGB_incomplete = (X*mask).cpu().detach().numpy()
+        ob_psnr = peak_signal_noise_ratio(image_gt, RGB_incomplete, data_range=1.0)
+        ob_ssim = structural_similarity(image_gt, RGB_incomplete, data_range=1.0, channel_axis=2)
+        ob_nrmse = normalized_root_mse(image_gt, RGB_incomplete)
+        print('SR:',args.visible_ratio, 'name:',name,
+              'OB_PSNR: {:.3f}, OB_SSIM: {:.3f}, OB_NRMSE: {:.3f}'.format(ob_psnr, ob_ssim, ob_nrmse))
+        OB_metrics = list(map(lambda x, y: x + y, OB_metrics, [ob_psnr, ob_ssim, ob_nrmse]))
+
+        U_input = torch.from_numpy(np.array(range(1,H+1))).reshape(H,1).type(dtype)
         V_input = torch.from_numpy(np.array(range(1,W+1))).reshape(W,1).type(dtype)
 
         model = Network(rank, posdim, mid_channel).type(dtype)
-        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.002}], #[0.002]
+        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.005}], #[0.005]
                                 lr=0.001)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
         
@@ -137,21 +147,19 @@ if __name__ == '__main__':
         with tqdm(total=max_iter) as pbar:
             for iter in range(max_iter):
                 X_Out, Us, Vs = model(U_input, V_input)
-                # loss_rec = torch.norm(X_Out*mask - X*mask, 2) #这里的损失需要分channel计算吗 H,W,C
                 loss_rec = torch.norm(X_Out*mask - X*mask, p='fro', dim=(0, 1)).mean()
                 
                 U_input_eps = torch.normal(mean=U_input, std=1.0*torch.ones_like(U_input)) #std=1.0
                 V_input_eps = torch.normal(mean=V_input, std=1.0*torch.ones_like(V_input))
                 X_Out_eps, *_ = model(U_input_eps, V_input_eps)
-                # loss_eps = torch.norm(X_Out-X_Out_eps, 2)
-                loss_eps = torch.norm(X_Out - X, p='fro', dim=(0, 1)).mean()
+                loss_eps = torch.norm(X_Out.detach()-X_Out_eps, p='fro', dim=(0, 1)).mean()
 
                 # loss_rank = torch.norm(Us, p='fro', dim=(0, 1)).mean() + \
                 #             torch.norm(Vs, p='fro', dim=(0, 1)).mean()
                 loss_rank = torch.norm(Us, p=2, dim=0).pow(Schatten_q).sum() +\
                             torch.norm(Vs, p=2, dim=0).pow(Schatten_q).sum()
                 
-                loss = 1.0*loss_rec + 0.05*loss_eps + 0.001*loss_rank #[1.0, 0.05 0.1]
+                loss = 1.0*loss_rec + 0.01*loss_eps + 0.001*loss_rank #[1.0, 0.01 0.001]
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -162,15 +170,20 @@ if __name__ == '__main__':
                 pbar.update()
                 
                 if iter % 500 == 0 and iter != 0:
-                    psnr = peak_signal_noise_ratio(image_gt, X_Out.cpu().detach().numpy())
-                    ssim = structural_similarity(image_gt.mean(2), 
-                                                X_Out.cpu().detach().numpy().mean(2), 
-                                                win_size=15, data_range=1.0)
+                    psnr = peak_signal_noise_ratio(image_gt, X_Out.cpu().detach().numpy(), data_range=1.0)
+                    ssim = structural_similarity(image_gt, X_Out.cpu().detach().numpy(), data_range=1.0, channel_axis=2)
                     nrmse = normalized_root_mse(image_gt, X_Out.cpu().detach().numpy())
                     if psnr >= best_metric[0]:
                         print('SR:',args.visible_ratio, 'name:',name, 'iteration:', iter, 'PSNR', 
                               psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
+                        if args.save:
+                            output_folder = os.path.join('output/Ours/inpainting/Image')
+                            if not os.path.exists(output_folder):
+                                os.makedirs(output_folder)
+                            output_path = os.path.join(output_folder, name + f'_SR{args.visible_ratio:.2f}_psnr{psnr:.3f}_inpainting.png')
+                            img = Image.fromarray((np.clip(X_Out.cpu().detach().numpy(),0,1) * 255).astype(np.uint8))
+                            img.save(output_path)
                     continue
 
                     plt.figure(figsize=(15,45))
@@ -187,7 +200,10 @@ if __name__ == '__main__':
                     plt.title('out')
                     plt.show()
         average_metrics = list(map(lambda x, y: x + y, average_metrics, best_metric))
-    
-    print('SR:',args.visible_ratio, 
+
+    print(f'SR:{args.visible_ratio:.2f}', 
+          'OB_PSNR: {}, OB_SSIM: {}, OB_NRMSE: {}'.format(*['{:.3f}'.format(metric / len(image_names)) 
+                                                   for metric in OB_metrics]))
+    print(f'SR:{args.visible_ratio:.2f}', 
           'PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(image_names)) 
                                                    for metric in average_metrics]))

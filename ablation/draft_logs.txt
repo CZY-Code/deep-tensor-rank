@@ -1,0 +1,99 @@
+SR: 0.20, Schatten_q: 0.01, PSNR: 45.958, SSIM: 0.991, NRMSE: 0.024
+SR: 0.25, Schatten_q: 0.01, PSNR: 46.955, SSIM: 0.993, NRMSE: 0.021
+SR: 0.15, Schatten_q: 0.01, PSNR: 43.876, SSIM: 0.987, NRMSE: 0.030
+SR: 0.20, Schatten_q: 0.10, PSNR: 46.008, SSIM: 0.991, NRMSE: 0.024
+SR: 0.15, Schatten_q: 0.10, PSNR: 43.934, SSIM: 0.987, NRMSE: 0.030
+SR: 0.25, Schatten_q: 0.10, PSNR: 46.997, SSIM: 0.993, NRMSE: 0.021
+SR: 0.30, Schatten_q: 0.01, PSNR: 47.436, SSIM: 0.993, NRMSE: 0.020
+SR: 0.10, Schatten_q: 0.01, PSNR: 40.009, SSIM: 0.975, NRMSE: 0.047
+SR: 0.20, Schatten_q: 0.20, PSNR: 46.258, SSIM: 0.992, NRMSE: 0.023
+SR: 0.25, Schatten_q: 0.20, PSNR: 47.194, SSIM: 0.993, NRMSE: 0.021
+SR: 0.15, Schatten_q: 0.20, PSNR: 44.427, SSIM: 0.988, NRMSE: 0.029
+SR: 0.20, Schatten_q: 0.50, PSNR: 46.394, SSIM: 0.991, NRMSE: 0.023
+SR: 0.25, Schatten_q: 0.50, PSNR: 47.169, SSIM: 0.993, NRMSE: 0.021
+SR: 0.15, Schatten_q: 0.50, PSNR: 45.021, SSIM: 0.989, NRMSE: 0.027
+SR: 0.30, Schatten_q: 0.10, PSNR: 47.655, SSIM: 0.993, NRMSE: 0.020
+SR: 0.10, Schatten_q: 0.10, PSNR: 39.884, SSIM: 0.975, NRMSE: 0.048
+SR: 0.20, Schatten_q: 1.00, PSNR: 46.272, SSIM: 0.991, NRMSE: 0.023
+SR: 0.25, Schatten_q: 1.00, PSNR: 46.951, SSIM: 0.992, NRMSE: 0.021
+SR: 0.15, Schatten_q: 1.00, PSNR: 45.055, SSIM: 0.989, NRMSE: 0.027
+SR: 0.20, Schatten_q: 1.50, PSNR: 46.238, SSIM: 0.991, NRMSE: 0.023
+SR: 0.25, Schatten_q: 1.50, PSNR: 47.034, SSIM: 0.992, NRMSE: 0.021
+SR: 0.15, Schatten_q: 1.50, PSNR: 45.078, SSIM: 0.989, NRMSE: 0.026
+SR: 0.30, Schatten_q: 0.20, PSNR: 47.705, SSIM: 0.994, NRMSE: 0.020
+SR: 0.10, Schatten_q: 0.20, PSNR: 40.824, SSIM: 0.979, NRMSE: 0.043
+SR: 0.20, Schatten_q: 2.00, PSNR: 46.544, SSIM: 0.992, NRMSE: 0.022
+SR: 0.25, Schatten_q: 2.00, PSNR: 47.287, SSIM: 0.993, NRMSE: 0.021
+SR: 0.15, Schatten_q: 2.00, PSNR: 45.121, SSIM: 0.989, NRMSE: 0.026
+SR: 0.20, Schatten_q: 2.50, PSNR: 46.555, SSIM: 0.992, NRMSE: 0.022
+SR: 0.25, Schatten_q: 2.50, PSNR: 47.457, SSIM: 0.993, NRMSE: 0.020
+SR: 0.15, Schatten_q: 2.50, PSNR: 44.951, SSIM: 0.989, NRMSE: 0.027
+SR: 0.30, Schatten_q: 0.50, PSNR: 47.739, SSIM: 0.993, NRMSE: 0.019
+SR: 0.10, Schatten_q: 0.50, PSNR: 42.045, SSIM: 0.982, NRMSE: 0.038
+SR: 0.20, Schatten_q: 3.00, PSNR: 46.452, SSIM: 0.992, NRMSE: 0.023
+SR: 0.25, Schatten_q: 3.00, PSNR: 47.236, SSIM: 0.993, NRMSE: 0.021
+SR: 0.15, Schatten_q: 3.00, PSNR: 45.209, SSIM: 0.990, NRMSE: 0.026
+SR: 0.30, Schatten_q: 1.00, PSNR: 47.335, SSIM: 0.993, NRMSE: 0.020
+SR: 0.10, Schatten_q: 1.00, PSNR: 42.624, SSIM: 0.983, NRMSE: 0.035
+SR: 0.30, Schatten_q: 1.50, PSNR: 47.474, SSIM: 0.993, NRMSE: 0.020
+SR: 0.10, Schatten_q: 1.50, PSNR: 42.779, SSIM: 0.983, NRMSE: 0.034
+SR: 0.30, Schatten_q: 2.00, PSNR: 47.908, SSIM: 0.994, NRMSE: 0.019
+SR: 0.10, Schatten_q: 2.00, PSNR: 42.562, SSIM: 0.982, NRMSE: 0.035
+SR: 0.30, Schatten_q: 2.50, PSNR: 47.931, SSIM: 0.994, NRMSE: 0.019
+SR: 0.10, Schatten_q: 2.50, PSNR: 42.428, SSIM: 0.982, NRMSE: 0.036
+SR: 0.30, Schatten_q: 3.00, PSNR: 47.609, SSIM: 0.993, NRMSE: 0.020
+SR: 0.10, Schatten_q: 3.00, PSNR: 42.930, SSIM: 0.984, NRMSE: 0.034
+
+Name: Lamp, Schatten_q: 0.01, CD: 0.0171, F1: 0.9663
+Name: Airplane, Schatten_q: 0.01, CD: 0.0128, F1: 0.9635
+Name: Chair, Schatten_q: 0.01, CD: 0.0126, F1: 0.9975
+Name: Table, Schatten_q: 0.01, CD: 0.0161, F1: 0.9626
+Name: Airplane, Schatten_q: 0.10, CD: 0.0119, F1: 0.9883
+Name: Lamp, Schatten_q: 0.10, CD: 0.0158, F1: 0.9951
+Name: Table, Schatten_q: 0.10, CD: 0.0165, F1: 0.9736
+Name: Chair, Schatten_q: 0.10, CD: 0.0143, F1: 0.9761
+Name: Lamp, Schatten_q: 0.20, CD: 0.0178, F1: 0.9420
+Name: Airplane, Schatten_q: 0.20, CD: 0.0125, F1: 0.9727
+Name: Table, Schatten_q: 0.20, CD: 0.0172, F1: 0.9573
+Name: Chair, Schatten_q: 0.20, CD: 0.0141, F1: 0.9608
+Name: Airplane, Schatten_q: 0.50, CD: 0.0127, F1: 0.9652
+Name: Lamp, Schatten_q: 0.50, CD: 0.0185, F1: 0.9398
+Name: Table, Schatten_q: 0.50, CD: 0.0169, F1: 0.9648
+Name: Chair, Schatten_q: 0.50, CD: 0.0134, F1: 0.9769
+Name: Airplane, Schatten_q: 1.00, CD: 0.0130, F1: 0.9573
+Name: Lamp, Schatten_q: 1.00, CD: 0.0185, F1: 0.9134
+Name: Table, Schatten_q: 1.00, CD: 0.0162, F1: 0.9784
+Name: Chair, Schatten_q: 1.00, CD: 0.0145, F1: 0.9714
+Name: Airplane, Schatten_q: 1.50, CD: 0.0123, F1: 0.9773
+Name: Lamp, Schatten_q: 1.50, CD: 0.0154, F1: 0.9886
+Name: Table, Schatten_q: 1.50, CD: 0.0166, F1: 0.9752
+Name: Chair, Schatten_q: 1.50, CD: 0.0145, F1: 0.9618
+Name: Airplane, Schatten_q: 2.00, CD: 0.0117, F1: 0.9858
+Name: Lamp, Schatten_q: 2.00, CD: 0.0169, F1: 0.9592
+Name: Table, Schatten_q: 2.00, CD: 0.0142, F1: 0.9994
+Name: Chair, Schatten_q: 2.00, CD: 0.0119, F1: 0.9918
+Name: Airplane, Schatten_q: 2.50, CD: 0.0115, F1: 0.9922
+Name: Lamp, Schatten_q: 2.50, CD: 0.0152, F1: 0.9805
+Name: Table, Schatten_q: 2.50, CD: 0.0153, F1: 0.9807
+Name: Chair, Schatten_q: 2.50, CD: 0.0125, F1: 0.9849
+Name: Airplane, Schatten_q: 3.00, CD: 0.0118, F1: 0.9831
+Name: Lamp, Schatten_q: 3.00, CD: 0.0169, F1: 0.9427
+Name: Table, Schatten_q: 3.00, CD: 0.0153, F1: 0.9791
+Name: Chair, Schatten_q: 3.00, CD: 0.0127, F1: 0.9820
+
+Name: Chair, rank: 128, CD: 0.0122, F1: 0.9944
+Name: Airplane, rank: 128, CD: 0.0118, F1: 0.9833
+Name: Table, rank: 128, CD: 0.0170, F1: 0.9550
+Name: Lamp, rank: 128, CD: 0.0161, F1: 0.9770
+Name: Chair, rank: 256, CD: 0.0139, F1: 0.9643
+Name: Airplane, rank: 256, CD: 0.0119, F1: 0.9799
+Name: Lamp, rank: 256, CD: 0.0164, F1: 0.9716
+Name: Table, rank: 256, CD: 0.0159, F1: 0.9859
+Name: Chair, rank: 512, CD: 0.0129, F1: 0.9862
+Name: Airplane, rank: 512, CD: 0.0130, F1: 0.9564
+Name: Table, rank: 512, CD: 0.0179, F1: 0.9616
+Name: Lamp, rank: 512, CD: 0.0165, F1: 0.9656
+Name: Airplane, rank: 1024, CD: 0.0130, F1: 0.9612
+Name: Chair, rank: 1024, CD: 0.0140, F1: 0.9608
+Name: Table, rank: 1024, CD: 0.0221, F1: 0.8692
+Name: Lamp, rank: 1024, CD: 0.0177, F1: 0.9392

@@ -1,0 +1,16 @@
+Name: Airplane, rank: 128, CD: 0.0117, F1: 0.9842
+Name: Chair, rank: 128, CD: 0.0130, F1: 0.9873
+Name: Lamp, rank: 128, CD: 0.0160, F1: 0.9756
+Name: Table, rank: 128, CD: 0.0167, F1: 0.9569
+Name: Lamp, rank: 256, CD: 0.0164, F1: 0.9760
+Name: Airplane, rank: 256, CD: 0.0118, F1: 0.9841
+Name: Chair, rank: 256, CD: 0.0143, F1: 0.9617
+Name: Table, rank: 256, CD: 0.0617, F1: 0.5402
+Name: Lamp, rank: 512, CD: 0.0169, F1: 0.9554
+Name: Airplane, rank: 512, CD: 0.0129, F1: 0.9580
+Name: Chair, rank: 512, CD: 0.0131, F1: 0.9843
+Name: Table, rank: 512, CD: 0.0183, F1: 0.9553
+Name: Lamp, rank: 1024, CD: 0.0185, F1: 0.9270
+Name: Airplane, rank: 1024, CD: 0.0127, F1: 0.9639
+Name: Chair, rank: 1024, CD: 0.0140, F1: 0.9556
+Name: Table, rank: 1024, CD: 0.0214, F1: 0.8926

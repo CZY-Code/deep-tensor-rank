@@ -1,19 +1,17 @@
-# import os
+import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 import torch
 from torch import nn, optim 
 import torch.nn.functional as F
-dtype = torch.cuda.FloatTensor
 import numpy as np 
 import matplotlib.pyplot as plt 
 from skimage.metrics import peak_signal_noise_ratio, normalized_root_mse, structural_similarity
 import rff
 import random
 from tqdm import tqdm
-# from PIL import Image
-import math
 import argparse
- 
+from PIL import Image
+dtype = torch.cuda.FloatTensor
 
 def set_random_seed(seed):
     torch.manual_seed(seed)
@@ -46,13 +44,12 @@ class MLPLayer(nn.Module):
 
     def forward(self, input):
         output = self.linear(input)
-        # output = torch.sin(self.omega_0 * output) 
         output = F.relu(output) #tanh、hardtanh、softplus、relu、sin
         return output
 
 
 mid_channel = 512
-rank = 512
+rank = 1024
 posdim = 128
 class Network(nn.Module):
     def __init__(self, rank, posdim, mid_channel): #
@@ -73,16 +70,12 @@ class Network(nn.Module):
                                 #    MLPLayer(mid_channel, mid_channel, is_first=False),
                                    nn.Linear(mid_channel, rank))
         
-        self.centre = torch.Tensor(rank,rank,rank).type(dtype)
-        self.centre.data.uniform_(-1 / math.sqrt(rank), 1 / math.sqrt(rank))
-        
-        self.encodingUV = rff.layers.GaussianEncoding(alpha=1.0, sigma=8.0, input_size=1, encoded_size=posdim//2) #[sigma=5,8]
-        # self.encodingW = rff.layers.GaussianEncoding(alpha=1.0, sigma=32.0, input_size=1, encoded_size=posdim//4)
+        self.encoding = rff.layers.GaussianEncoding(alpha=1.0, sigma=8.0, input_size=1, encoded_size=posdim//2) #[sigma=5,8]
 
     def forward(self, U_input, V_input, W_input):
-        U = self.U_Net(self.encodingUV(self.normalize_to_01(U_input)))
-        V = self.V_Net(self.encodingUV(self.normalize_to_01(V_input)))
-        W = self.W_Net(self.encodingUV(self.normalize_to_01(W_input)))
+        U = self.U_Net(self.encoding(self.normalize_to_01(U_input)))
+        V = self.V_Net(self.encoding(self.normalize_to_01(V_input)))
+        W = self.W_Net(self.encoding(self.normalize_to_01(W_input)))
         output = torch.einsum('ir,jr,kr -> ijk', U, V, W)
         return output, U, V, W
     
@@ -108,11 +101,9 @@ def generate_random_mask_3d(H, W, C, visible_ratio=0.1):
 def read_yuv_video(yuv_filename, width, height, frame_count, color_format='420'):
     if color_format == '420':
         frame_size = (width * height) + (width // 2 * height // 2 * 2)
-
     with open(yuv_filename, 'rb') as f:
         raw_data = f.read()
     video_data = np.zeros((height, width, frame_count), dtype=np.float32)
-
     # 逐帧读取并解析 YUV 数据
     for frame_idx in range(frame_count):
         start_idx = frame_idx * frame_size
@@ -133,21 +124,22 @@ def read_yuv_video(yuv_filename, width, height, frame_count, color_format='420')
         #     u_frame = np.repeat(np.repeat(u_frame, 2, axis=0), 2, axis=1)
         #     v_frame = np.repeat(np.repeat(v_frame, 2, axis=0), 2, axis=1)
         # 将 Y, U, V 分量合并为 RGB 图像（可选）
-        # 你可以使用 OpenCV 或其他库将 YUV 转换为 RGB
-
-        # 但是这里我们只保留 Y 分量
+        # 你可以使用 OpenCV 或其他库将 YUV 转换为 RGB 但是这里只保留 Y 分量
         video_data[:, :, frame_idx] = y_frame / 255.0
-
     return video_data
+
 
 if __name__ == '__main__':
     set_random_seed(42)
     max_iter =  5001
     Video_names = ['foreman', 'carphone']
     average_metrics = [0.0, 0.0, 0.0]
-    
+    OB_metrics = [0.0, 0.0, 0.0]
+    Schatten_q = 1.0
+
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument('--visible_ratio', type=float, required=True, help='The visible ratio parameter.')
+    parser.add_argument('--save', action='store_true')
     args = parser.parse_args()
 
     for name in Video_names:
@@ -157,13 +149,20 @@ if __name__ == '__main__':
         mask = generate_random_mask_3d(H, W, C, visible_ratio=args.visible_ratio) #[H,W,3]
         X = torch.from_numpy(Video_gt).type(dtype).cuda()
 
+        video_incomplete = (X*mask).cpu().detach().numpy()
+        ob_psnr = peak_signal_noise_ratio(Video_gt, video_incomplete)
+        ob_ssim = structural_similarity(Video_gt, video_incomplete, data_range=1.0, channel_axis=2)
+        ob_nrmse = normalized_root_mse(Video_gt, video_incomplete)
+        print(f'SR: {args.visible_ratio:.2f}', 'name:', name,
+              'OB_PSNR: {:.3f}, OB_SSIM: {:.3f}, OB_NRMSE: {:.3f}'.format(ob_psnr, ob_ssim, ob_nrmse))
+        OB_metrics = list(map(lambda x, y: x + y, OB_metrics, [ob_psnr, ob_ssim, ob_nrmse]))
+
         U_input = torch.from_numpy(np.array(range(1,H+1))).reshape(H,1).type(dtype) #[512,1] 1-512间的整数
         V_input = torch.from_numpy(np.array(range(1,W+1))).reshape(W,1).type(dtype)
         W_input = torch.from_numpy(np.array(range(1,C+1))).reshape(C,1).type(dtype)
 
         model = Network(rank, posdim, mid_channel).type(dtype)
-        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.02}], #[0.002]
-                                lr=0.001) #0.001
+        optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.02}], lr=0.001) #[0.02, 0.001]
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
         
         best_metric = [0.0, 0.0, 0.0]
@@ -174,32 +173,42 @@ if __name__ == '__main__':
                 
                 U_input_eps = torch.normal(mean=U_input, std=1.0*torch.ones_like(U_input)) #std=1.0
                 V_input_eps = torch.normal(mean=V_input, std=1.0*torch.ones_like(V_input))
-                W_input_eps = torch.normal(mean=W_input, std=0.1*torch.ones_like(W_input))
+                W_input_eps = torch.normal(mean=W_input, std=0.1*torch.ones_like(W_input)) #0.5
                 X_Out_eps, *_ = model(U_input_eps, V_input_eps, W_input_eps)
-                loss_eps = torch.norm(X_Out-X_Out_eps, p='fro')
+                loss_eps = torch.norm(X_Out.detach()-X_Out_eps, p='fro')
 
                 loss_rank = torch.norm(U, p='fro') + torch.norm(V, p='fro') + torch.norm(W, p='fro')
+                # loss_rank = torch.norm(U, p=2, dim=0).pow(Schatten_q).sum() +\
+                #             torch.norm(V, p=2, dim=0).pow(Schatten_q).sum() +\
+                #             torch.norm(W, p=2, dim=0).pow(Schatten_q).sum()
                 
                 loss = 1.0*loss_rec + 0.05*loss_eps + 0.05*loss_rank #[1.0, 0.05 0.05]
                 optimizer.zero_grad()
-                loss.backward(retain_graph=True)
+                loss.backward()
                 optimizer.step()
                 scheduler.step()
-                pbar.set_postfix({'loss_rec': f"{loss_rec:.4f}", 
-                                  'loss_eps': f"{loss_eps:.4f}", 
-                                  'loss_rank': f"{loss_rank:.4f}"})
+                pbar.set_postfix({'loss_rec': f"{loss_rec.item():.4f}", 
+                                  'loss_eps': f"{loss_eps.item():.4f}", 
+                                  'loss_rank': f"{loss_rank.item():.4f}"})
                 pbar.update()
                 
                 if iter % 500 == 0 and iter != 0:
                     psnr = peak_signal_noise_ratio(Video_gt, X_Out.cpu().detach().numpy(), data_range=1.0)
-                    ssim = structural_similarity(Video_gt, X_Out.cpu().detach().numpy(), 
-                                                win_size=15, data_range=1.0, channel_axis=2)
+                    ssim = structural_similarity(Video_gt, X_Out.cpu().detach().numpy(), data_range=1.0, channel_axis=2)
                     nrmse = normalized_root_mse(Video_gt, X_Out.cpu().detach().numpy())
-                    # print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                     
+                    show=0
                     if ssim >= best_metric[1]:
-                        print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
+                        print(f'SR: {args.visible_ratio:.2f}', 'name:',name, 'iteration:', iter, 
+                              'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
+                        if args.save:
+                            output_folder = os.path.join('output/Ours/inpainting/Video')
+                            if not os.path.exists(output_folder):
+                                os.makedirs(output_folder)
+                            output_path = os.path.join(output_folder, name + f'_SR{args.visible_ratio:.2f}_psnr{psnr:.3f}_inpainting.png')
+                            img = Image.fromarray((np.clip(X_Out.cpu().detach().numpy(),0,1) * 255).astype(np.uint8)[...,show])
+                            img.save(output_path)
                     continue
                     show = [0]
                     plt.figure(figsize=(15,45))
@@ -217,7 +226,10 @@ if __name__ == '__main__':
                     plt.show()
         average_metrics = list(map(lambda x, y: x + y, average_metrics, best_metric))
     
-    print('visible_ratio:', args.visible_ratio, 
+    print(f'SR: {args.visible_ratio:.2f}', 
+          'OB_PSNR: {}, OB_SSIM: {}, OB_NRMSE: {}'.format(*['{:.3f}'.format(metric / len(Video_names)) 
+                                                   for metric in OB_metrics]))
+    print(f'SR: {args.visible_ratio:.2f}', 
           'PSNR: {}, SSIM: {}, NRMSE: {}'.format(*['{:.3f}'.format(metric / len(Video_names)) 
                                                    for metric in average_metrics]))
 

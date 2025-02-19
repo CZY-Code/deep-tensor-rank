@@ -10,6 +10,7 @@ import random
 from tqdm import tqdm
 import argparse
 import tifffile
+from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio, normalized_root_mse, structural_similarity
 from utils.noiseFun import add_gaussian_noise, add_sparse_noise, add_deadline_noise, add_stripe_noise
 dtype = torch.cuda.FloatTensor
@@ -57,10 +58,6 @@ class MLPLayer(nn.Module):
         output = F.relu(output) #tanh、hardtanh、softplus、relu、sin
         return output
 
-
-# mid_channel = 256
-# rank = 512
-# posdim = 64
 mid_channel = 512
 rank = 1024
 posdim = 128
@@ -83,16 +80,12 @@ class Network(nn.Module):
                                    MLPLayer(mid_channel, mid_channel, is_first=False),
                                    nn.Linear(mid_channel, rank))
         
-        # self.centre = torch.Tensor(rank,rank,rank).type(dtype)
-        # self.centre.data.uniform_(-1 / math.sqrt(rank), 1 / math.sqrt(rank))
-        
-        self.encodingUV = rff.layers.GaussianEncoding(alpha=2.0, sigma=64.0, input_size=1, encoded_size=posdim//2)
-        # self.encodingW = rff.layers.GaussianEncoding(alpha=1.0, sigma=32.0, input_size=1, encoded_size=posdim//4)
+        self.encoding = rff.layers.GaussianEncoding(alpha=2.0, sigma=64.0, input_size=1, encoded_size=posdim//2)
 
     def forward(self, U_input, V_input, W_input):
-        U = self.U_Net(self.encodingUV(self.normalize_to_01(U_input)))
-        V = self.V_Net(self.encodingUV(self.normalize_to_01(V_input)))
-        W = self.W_Net(self.encodingUV(self.normalize_to_01(W_input)))
+        U = self.U_Net(self.encoding(self.normalize_to_01(U_input)))
+        V = self.V_Net(self.encoding(self.normalize_to_01(V_input)))
+        W = self.W_Net(self.encoding(self.normalize_to_01(W_input)))
         output = torch.einsum('ir,jr,kr -> ijk', U, V, W)
         return output, U, V, W
     
@@ -131,9 +124,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Process some integers.")
     parser.add_argument('--case', type=int, default=1)
     parser.add_argument('--show', action='store_true')
+    parser.add_argument('--save', action='store_true')
     args = parser.parse_args()
 
-    phi = 0 #1*10e-6
     mu = 0.1 #0.1
     gamma = 0.02 #0.02
     soft_thres = soft()
@@ -201,8 +194,6 @@ if __name__ == '__main__':
                 D = (D + mu * (S  - Vs)).clone().detach()
                 
                 loss_rec = torch.norm(X*mask-X_Out*mask-S*mask, 2)
-                loss_rec = loss_rec + phi * torch.norm(X_Out[1:,:,:] - X_Out[:-1,:,:], 1)
-                loss_rec = loss_rec + phi * torch.norm(X_Out[:,1:,:] - X_Out[:,:-1,:], 1)
                 
                 U_input_eps = torch.normal(mean=U_input, std=0.5*torch.ones_like(U_input))
                 V_input_eps = torch.normal(mean=V_input, std=0.5*torch.ones_like(V_input))
@@ -229,14 +220,20 @@ if __name__ == '__main__':
                     psnr = peak_signal_noise_ratio(MSI_gt, X_Out.cpu().detach().numpy(), data_range=1.0)
                     ssim = structural_similarity(MSI_gt, X_Out.cpu().detach().numpy(), data_range=1.0, channel_axis=2)
                     nrmse = normalized_root_mse(MSI_gt, X_Out.cpu().detach().numpy())
-                    # print('name:',name, 'iteration:', iter, 'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                     
+                    show = [120, 90, 60]
                     if ssim >= best_metric[1]:
                         print('case:', args.case, 'slice:', i, 'iteration:', iter, 
                               'PSNR', psnr, 'SSIM', ssim, 'NRMSE', nrmse)
                         best_metric = [psnr, ssim, nrmse]
+                        if args.save:
+                            output_folder = os.path.join('output/Ours/denoising/WDC')
+                            if not os.path.exists(output_folder):
+                                os.makedirs(output_folder)
+                            output_path = os.path.join(output_folder, str(i) + f'_case{args.case:d}_psnr{psnr:.3f}_denoising.png')
+                            img = Image.fromarray((np.clip(X_Out.cpu().detach().numpy(),0,1) * 255).astype(np.uint8)[...,show])
+                            img.save(output_path)
                     if args.show:
-                        show = [15, 25, 30]
                         plt.figure(figsize=(15, 45))
                         plt.subplot(131)
                         plt.imshow(np.clip(X.cpu().detach().numpy(), 0, 1)[...,show])

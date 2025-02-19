@@ -1,4 +1,8 @@
 /datasets
 /data
+/output
+/Demos
+/temp
 __pycache__
 /*.txt
+/*.pth

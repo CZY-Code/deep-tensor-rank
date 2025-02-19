@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import rff
 import random
+from datetime import datetime
 from utils.metrics import chamfer_distance_and_f_score
 
 
@@ -57,9 +58,12 @@ class MLPLayer(nn.Module):
         output = F.leaky_relu(output, negative_slope=0.2) #tanh、hardtanh、softplus、relu、sin
         return output
         
-mid_channel = 512
+mid_channel = 256 #512
 rank = 512
-posdim = 256
+posdim = 32 #64
+# mid_channel = 512
+# rank = 512
+# posdim = 256
 class Network(nn.Module):
     def __init__(self, Rank, mid_channel, posdim):
         super(Network, self).__init__()
@@ -82,7 +86,7 @@ class Network(nn.Module):
                                    MLPLayer(mid_channel, mid_channel, is_first=False),
                                    nn.Linear(mid_channel, Rank))
         
-        self.encoding = rff.layers.GaussianEncoding(alpha=1.0, sigma=8.0, input_size=1, encoded_size=posdim//2)
+        self.encoding = rff.layers.GaussianEncoding(alpha=1.0, sigma=8.0, input_size=1, encoded_size=posdim//2) #1.0 8.0
 
     def forward(self, x, flag):
         coords = torch.stack([self.encoding(x[:,i].unsqueeze(1)) for i in range(3)], dim=-1)
@@ -102,19 +106,52 @@ class Network(nn.Module):
         else:
             raise NotImplementedError
 
+def draw_3D(points, nameSuffix, save_folder):
+    size_pc = 6
+    cmap = plt.cm.get_cmap('magma')
+    fig = plt.figure(figsize=(6,6))
+    ax = fig.add_subplot(111, projection='3d')
+    xs = points[:,0]
+    ys = points[:,1]
+    zs = points[:,2]
+    ax.scatter(xs, ys, zs,s=size_pc,c=zs, cmap=cmap)
+    ax.grid(False)
+    ax.xaxis.pane.fill = False
+    ax.yaxis.pane.fill = False
+    ax.zaxis.pane.fill = False
+    ax._axis3don = False
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_zlim(0, 1)
+    ax.set_box_aspect([1, 1, 1])
+    # 生成保存路径
+    save_path = os.path.join(save_folder, f'{dataName}_{nameSuffix}.png')
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    plt.savefig(save_path)
+    # plt.show()
+
 
 if __name__ == '__main__':
     #################
     # Here are the hyperparameters.
-    thres = 0.025
-    max_iter = 5001 #2001
+    thres = 0.05
+    max_iter = 5000
+    Schatten_q = 0.1
+    dataName = 'Table'
+    
+    rootPath = 'datasets/shapeNet/shapenetcore_partanno_segmentation_benchmark_v0'
     #################
-    
-    file_name = 'datasets/shapeNet/shapenetcore_partanno_segmentation_benchmark_v0/03001627/points/d31ab2866270fb1c19fb4103277a6b93.pts'
+    dataset_dict = {'Table': '04379243/points/fcd4d0e1777f4841dcfcef693e7ec696.pts',
+                    'Airplane': '02691156/points/1c27d282735f81211063b9885ddcbb1.pts',
+                    'Chair': '03001627/points/fd05e5d8fd82508e6d0a0d492005859c.pts',
+                    'Lamp': '03636649/points/1a9c1cbf1ca9ca24274623f5a5d0bcdc.pts'}
+    file_name = os.path.join(rootPath, dataset_dict[dataName])
+
     X_np_gt = np.take(np.loadtxt(file_name), indices=[0,2,1], axis=-1)
-    
     N = X_np_gt.shape[0]
-    X_np = X_np_gt[np.random.choice(N, size=int(N * 0.9), replace=False)] #
+    print('The total number of points is: ', N)
+    X_np = X_np_gt[np.random.choice(N, size=int(N * 0.2), replace=False)]
     add_border = 0.01
     
     # 归一化点云数据
@@ -124,6 +161,13 @@ if __name__ == '__main__':
     X_np = (X_np - min_vals) / scaler
     X_np_gt = (X_np_gt - min_vals) / scaler
     X_GT = torch.from_numpy(X_np_gt).type(dtype)
+    # X_OB = torch.from_numpy(X_np).type(dtype)
+    # CD, f_score, precision, recall = chamfer_distance_and_f_score(X_OB, X_GT, threshold=0.001, scaler=1)
+    # print(dataName, 'CD: {:.4f}, f_score: {:.4f}, precision: {:.4f}, recall: {:.4f}'.format(CD, f_score, precision, recall))
+    # exit(0)
+    # draw_3D(X_np, 'ob', save_folder='./output/Origin/Upsampling')
+    # draw_3D(X_np_gt, 'gt', save_folder='./output/Origin/Upsampling')
+    # exit(0)
     
     n = X_np.shape[0]
     X_gt = torch.zeros(n, 1).type(dtype)
@@ -133,12 +177,12 @@ if __name__ == '__main__':
     x_input = torch.cat((U_input, V_input, W_input), dim=1)
 
     model = Network(rank, mid_channel, posdim).type(dtype)
-    optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.001}], lr=0.0001)
+    optimizer = optim.Adam([{'params': model.parameters(), 'weight_decay': 0.01}], lr=0.0001)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iter, eta_min=0)
     
     rand_num = 30
     with tqdm(total=max_iter) as pbar:
-        for iter in range(max_iter):
+        for iter in range(1, max_iter+1):
             #在[0,1]之间均匀随机取值
             U_random = torch.rand(rand_num,1).type(dtype).reshape(rand_num,1)
             U_random.requires_grad=True
@@ -152,59 +196,45 @@ if __name__ == '__main__':
             loss_1 = torch.norm(X_Out - X_gt, 1)
             X_Out_off = model(x_random, flag = 2) #只用于计算SDF损失 [30,30,30]
             grad_ = gradient(X_Out_off, x_random) #shape [30, 3]
-            loss_2 = 1.0 * torch.norm(grad_.norm(dim=-1) - rand_num**2, 1) #梯度大小固定为1的损失
-            loss_3 = 1.0 * torch.norm(torch.exp(-torch.abs(X_Out_off)), 1) #其他点原理0平面的损失
+            loss_2 = 2.0 * torch.norm(grad_.norm(dim=-1) - rand_num**2, 1) #梯度大小固定为1 #2 1
+            loss_3 = 8.0 * torch.norm(torch.exp(-torch.abs(X_Out_off)), 1) #其他点远离零平面 #8 4
             loss_rec = loss_1 + loss_2 + loss_3
 
             #=======eps loss==================
             x_input_eps = torch.normal(mean=x_random.detach(), std=0.01*torch.ones_like(x_random))
             X_Out_eps, Us, Vs, Ws = model(x_input_eps, flag = 3) #[299,1,1]
-            loss_eps = torch.norm(X_Out_eps - X_Out_off, 2)
+            loss_eps = torch.norm(X_Out_eps - X_Out_off.detach(), 2)
             #=========low rank loss============
             loss_rank = torch.norm(Us, 2) + torch.norm(Vs, 2) + torch.norm(Ws, 2)
+            # loss_rank = torch.norm(Us, p=2, dim=0).pow(Schatten_q).sum() +\
+            #             torch.norm(Vs, p=2, dim=0).pow(Schatten_q).sum() +\
+            #             torch.norm(Ws, p=2, dim=0).pow(Schatten_q).sum()
 
-            loss = 1.0*loss_rec + 100.0*loss_eps + 0.33*loss_rank #[1.0, 0.1, 1.0]
+            loss = 1.0*loss_rec + 1000.0*loss_eps + 100.0*loss_rank #[1.0, 10.0, 10.0]
             optimizer.zero_grad()
             loss.backward(retain_graph=True)
             optimizer.step()
             scheduler.step()
-            pbar.set_postfix({'loss_1': f"{loss_1:.4f}", 'loss_2': f"{loss_2:.4f}", 'loss_3': f"{loss_3:.4f}",
-                                'loss_e': f"{loss_eps:.4f}", 'loss_r': f"{loss_rank:.4f}"})
+            pbar.set_postfix({'loss_1': f"{loss_1.item():.4f}", 'loss_2': f"{loss_2.item():.4f}", 'loss_3': f"{loss_3.item():.4f}",
+                              'loss_e': f"{loss_eps.item():.4f}", 'loss_r': f"{loss_rank.item():.4f}"})
             pbar.update()
             # continue
             if iter % 1000 == 0 and iter != 0:
                 print('iteration:', iter)
-                number = 60
+                number = 60 #90
                 u = torch.linspace(0,1,number).type(dtype).reshape(number,1)
                 v = torch.linspace(0,1,number).type(dtype).reshape(number,1)
                 w = torch.linspace(0,1,number).type(dtype).reshape(number,1)
-                x_in = torch.cat((u, v, w),dim=1)
+                x_in = torch.cat((u, v, w), dim=1)
+                # x_in = torch.normal(mean=x_in, std=0.01*torch.ones_like(x_in))
                 out = model(x_in, flag = 2).detach().cpu().clone()
                 idx = (torch.where(torch.abs(out)<thres))
                 Pts = torch.cat((u[idx[0]], v[idx[1]]), dim = 1)
                 Pts = torch.cat((Pts, w[idx[2]]), dim = 1)
                 CD, f_score, precision, recall = chamfer_distance_and_f_score(Pts, X_GT, threshold=thres, scaler=scaler)
                 print('CD: {:.4f}, f_score: {:.4f}, precision: {:.4f}, recall: {:.4f}'.format(CD, f_score, precision, recall))
+                nameSuffix = 'F{:.4f}_CD{:.4f}'.format(f_score, CD)
                 # continue
                 Pts_np = Pts.detach().cpu().clone().numpy()
-                size_pc = 6
-                fig = plt.figure(figsize=(15,30))
-                cmap = plt.cm.get_cmap('magma')
-
-                ax1 = plt.subplot(121, projection='3d')
-                xs = Pts_np[:,0]
-                ys = Pts_np[:,1]
-                zs = Pts_np[:,2]
-                ax1.scatter(xs, ys, zs,s=size_pc,c=zs, cmap=cmap)
+                draw_3D(Pts_np, nameSuffix, save_folder=os.path.join('./output/Ours/Upsampling', dataName))
                 
-                ax2 = fig.add_subplot(122, projection='3d')
-                xs = X_np[:,0]
-                ys = X_np[:,1]
-                zs = X_np[:,2]
-                ax2.scatter(xs, ys, zs,s=size_pc,c=zs, cmap=cmap)
-                for ax in [ax1, ax2]:
-                    ax.set_xlim(0, 1)
-                    ax.set_ylim(0, 1)
-                    ax.set_zlim(0, 1)
-                    ax.set_box_aspect([1, 1, 1])
-                plt.show()

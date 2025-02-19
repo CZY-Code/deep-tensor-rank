@@ -98,6 +98,41 @@ class Network(nn.Module):
         else:
             raise NotImplementedError
 
+def draw_3D(points, nameSuffix, save_folder):    
+    size_pc = 6
+    cmap = plt.cm.get_cmap('magma')
+    fig = plt.figure(figsize=(6,6))
+    ax = fig.add_subplot(111, projection='3d')
+    xs = points[:,0]
+    ys = points[:,1]
+    zs = points[:,2]
+    ax.scatter(xs, ys, zs,s=size_pc,c=zs, cmap=cmap)
+    ax.view_init(elev=30, azim=90)
+    ax.grid(False)
+    ax.xaxis.pane.fill = False
+    ax.yaxis.pane.fill = False
+    ax.zaxis.pane.fill = False
+    ax._axis3don = False
+    # ax.set_xlim(0, 1)
+    # ax.set_ylim(0, 1)
+    # ax.set_zlim(0, 1)
+    max_range = np.array([xs.max()-xs.min(), ys.max()-ys.min(), zs.max()-zs.min()]).max() / 2.0
+    # 计算中心点
+    mid_x = (xs.max()+xs.min()) * 0.5
+    mid_y = (ys.max()+ys.min()) * 0.5
+    mid_z = (zs.max()+zs.min()) * 0.5
+    # 设置坐标轴范围，确保等比例缩放
+    ax.set_xlim(mid_x - max_range, mid_x + max_range)
+    ax.set_ylim(mid_y - max_range, mid_y + max_range)
+    ax.set_zlim(mid_z - max_range, mid_z + max_range)
+    ax.set_box_aspect([1, 1, 1])
+    # 生成保存路径
+    save_path = os.path.join(save_folder, f'Heart_{nameSuffix}.png')
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    plt.savefig(save_path)
+    # plt.show()
+
 
 if __name__ == '__main__':
     #################
@@ -174,7 +209,7 @@ if __name__ == '__main__':
             # continue
             if iter % 1000 == 0 and iter != 0:
                 print('iteration:', iter)
-                number = 60
+                number = 90
                 u = torch.linspace(0,1,number).type(dtype).reshape(number,1)
                 v = torch.linspace(0,1,number).type(dtype).reshape(number,1)
                 w = torch.linspace(0,1,number).type(dtype).reshape(number,1)
@@ -183,10 +218,12 @@ if __name__ == '__main__':
                 idx = (torch.where(torch.abs(out)<thres))
                 Pts = torch.cat((u[idx[0]], v[idx[1]]), dim = 1)
                 Pts = torch.cat((Pts, w[idx[2]]), dim = 1)
-                CD, f_score, precision, recall = chamfer_distance_and_f_score(Pts, X_GT, threshold=0.01, scaler=scaler)
+                CD, f_score, precision, recall = chamfer_distance_and_f_score(Pts, X_GT, threshold=thres, scaler=scaler)
                 print('CD: {:.4f}, f_score: {:.4f}, precision: {:.4f}, recall: {:.4f}'.format(CD, f_score, precision, recall))
-                continue
+                nameSuffix = 'F{:.4f}_CD{:.4f}'.format(f_score, CD)
                 Pts_np = Pts.detach().cpu().clone().numpy()
+                draw_3D(Pts_np, nameSuffix, save_folder=os.path.join('./output/Ours/Upsampling', 'Heart'))
+                continue
                 size_pc = 6
                 fig = plt.figure(figsize=(15,30))
                 ax = plt.subplot(121, projection='3d')
