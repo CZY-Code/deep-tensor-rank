@@ -6,3 +6,5 @@
 __pycache__
 /*.txt
 /*.pth
+/DecBunny.py
+!requirements.txt

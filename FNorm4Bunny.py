@@ -1,5 +1,3 @@
-# For Bunny loss_2\loss_3 和lr的乘积至关重要
-# CD: 0.0079, f_score: 0.9245, precision: 0.8752, recall: 0.9797
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 import torch

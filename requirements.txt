@@ -1,0 +1,13 @@
+matplotlib==3.5.0
+numpy==1.26.4
+open3d==0.18.0
+opencv_python==4.10.0.84
+pandas==2.2.3
+Pillow==10.0.1
+PyWavelets==1.2.0
+scipy==1.11.3
+tifffile==2024.7.21
+torch==2.1.0
+torchvision==0.16.0
+tqdm==4.65.2
+lpips==0.1.4
